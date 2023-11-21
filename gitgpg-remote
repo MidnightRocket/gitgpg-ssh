@@ -1,0 +1,71 @@
+#!/bin/sh
+
+set -eu
+
+stderr() {
+	printf "%b\n" "$@" 1>&2
+}
+
+gpg="$(command -v gpg)"
+
+
+ARGS="$@"
+
+# https://stackoverflow.com/a/8811800
+# If ARGS does not contain '-bsau' then not signing request
+if [ "${ARGS#*"-bsau"}" = "$ARGS" ]; then
+	exec "$gpg" "$@"
+fi
+
+
+
+
+if [ -z "${GITGPG_REMOTE_DIR+x}" ]; then
+	stderr "Missing environment GITGPG_REMOTE_DIR"
+	stderr "Reverting to gpg"
+	exec "$gpg" "$@"
+fi
+
+
+if [ ! -d "$GITGPG_REMOTE_DIR" ]; then
+	stderr "No such directory '$GITGPG_REMOTE_DIR'"
+	exit 1
+fi
+
+
+
+
+
+
+checkForPipe() {
+	if [ ! -p "$1" ]; then
+		mkfifo "$1"
+	fi
+}
+
+STDIN_PIPE="$GITGPG_REMOTE_DIR/stdin.pipe"
+STDOUT_PIPE="$GITGPG_REMOTE_DIR/stdout.pipe"
+STDERR_PIPE="$GITGPG_REMOTE_DIR/stderr.pipe"
+EXITCODE_PIPE="$GITGPG_REMOTE_DIR/exitcode.pipe"
+checkForPipe "$STDIN_PIPE"
+checkForPipe "$STDOUT_PIPE"
+checkForPipe "$STDERR_PIPE"
+checkForPipe "$EXITCODE_PIPE"
+
+
+
+
+cat > "$STDIN_PIPE"
+stderr "waiting for stderr"
+cat "$STDERR_PIPE" >&2
+stderr "waiting for response"
+cat "$STDOUT_PIPE"
+stderr "waiting for exit code"
+EXITCODE="$(cat "$EXITCODE_PIPE")"
+
+exit "$EXITCODE"
+
+
+
+# have a timeout 
+# timeout 2s 

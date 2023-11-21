@@ -1,0 +1,134 @@
+#!/bin/zsh
+
+# https://serverfault.com/questions/960619/using-named-pipes-to-control-a-remote-ssh-session-in-bash
+# https://stackoverflow.com/a/20018118
+
+
+
+
+
+set -eu
+stderr() {
+	printf "%b\n" "$@" 1>&2
+}
+
+
+
+reportError() {
+	stderr "$2"
+	return "$1"
+}
+
+
+gpg="$(git config --default "$(command -v gpg)" gpg.program)"
+KEY_ID="$(git config user.signingkey)" || reportError "$?" "Must configure gpg signing key using\n  git config --global user.signingkey \$KEYID"
+
+
+
+cleanup() {
+	stderr "Doing cleanup rm '$TEMP_DIR'"
+	rm -rf "$TEMP_DIR"
+}
+TEMP_SUFFIX="-gitgpg-remote"
+
+# have to force parent dir to /tmp otherwise is
+# Name for domain socket too long error is thrown by ssh
+TEMP_DIR="$(mktemp -d --suffix "$TEMP_SUFFIX" -p "/tmp")"
+trap 'cleanup' EXIT
+
+
+
+stderr "Local tempdir: $TEMP_DIR"
+
+
+# STDIN_PIPE="$TEMP_DIR/stdin.pipe"
+# STDOUT_PIPE="$TEMP_DIR/stdout.pipe"
+# STDERR_PIPE="$TEMP_DIR/stderr.pipe"
+# EXITCODE_PIPE="$TEMP_DIR/exitcode.pipe"
+# 
+# mkfifo "$STDIN_PIPE"
+# mkfifo "$STDOUT_PIPE"
+# mkfifo "$STDERR_PIPE"
+# mkfifo "$EXITCODE_PIPE"
+
+ls -l "$TEMP_DIR"
+
+
+SSH_ARGS=(-o "ControlMaster=auto" -o "ControlPath=$TEMP_DIR/S.control" -o "ControlPersist=15m")
+SSH_SERVER="${1:?At least one argument required}"
+
+
+
+
+
+REMOTE_TEMP_DIR="$(ssh $SSH_ARGS -T "$SSH_SERVER" "mktemp --suffix '$TEMP_SUFFIX' -d")"
+stderr "Remote tempdir: $REMOTE_TEMP_DIR"
+
+
+REMOTE_STDIN_PIPE="$REMOTE_TEMP_DIR/stdin.pipe"
+REMOTE_STDOUT_PIPE="$REMOTE_TEMP_DIR/stdout.pipe"
+REMOTE_STDERR_PIPE="$REMOTE_TEMP_DIR/stderr.pipe"
+REMOTE_EXITCODE_PIPE="$REMOTE_TEMP_DIR/exitcode.pipe"
+
+
+
+ssh $SSH_ARGS -T "$SSH_SERVER" <<-EOF
+	mkfifo "$REMOTE_STDIN_PIPE"
+	mkfifo "$REMOTE_STDOUT_PIPE"
+	mkfifo "$REMOTE_STDERR_PIPE"
+	mkfifo "$REMOTE_EXITCODE_PIPE"
+EOF
+
+
+
+
+backgroundListener() {
+	ERROR_FILE="$TEMP_DIR/error"
+	while [ -d "$TEMP_DIR" ]; do
+		INPUT="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
+		
+		EXITCODE="0" # Default exit code of zero
+		OUTPUT="$(echo "$INPUT" | $gpg --status-fd=2 -bsau "$KEY_ID" 2>$ERROR_FILE)" || EXITCODE="$?"
+
+		cat "$ERROR_FILE" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDERR_PIPE"
+		echo "$OUTPUT" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDOUT_PIPE"
+		echo "$EXITCODE" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_EXITCODE_PIPE"
+	done
+}
+
+backgroundListener &
+PID_BACKGROUND_LISTENER="$!"
+stderr "PID: $PID_BACKGROUND_LISTENER"
+
+
+
+
+
+
+
+
+ssh $SSH_ARGS -t "$SSH_SERVER" "GITGPG_REMOTE_DIR=$REMOTE_TEMP_DIR $SHELL -l"
+
+
+# cleanup
+
+ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2
+
+kill "$PID_BACKGROUND_LISTENER"
+
+stderr "end"
+
+
+
+
+
+
+
+
+
+# mosh --experimental-remote-ip=remote --ssh "ssh $SSH_ARGS" "$SSH_SERVER"
+# Problems with using mosh is that support with Controlmaster socket is experimental
+# See https://github.com/mobile-shell/mosh/issues/24
+# Also if ControlMaster session drops, and Mosh session persists
+# Then there will be a disconnect of control master, but the active mosh session will give 
+# illution that session is still good. 
