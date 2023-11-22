@@ -71,6 +71,19 @@ checkForPipe "$EXITCODE_PIPE"
 
 
 
+$timeout 3s sh <<-EOF || reportError "$?" "Timeout: likely broken pipe.\nTry to restart session"
+	printf "%s" "BEGIN SIGNING REQUEST" > "$STDIN_PIPE"
+	EXITCODE="\$(cat "$EXITCODE_PIPE")"
+	if [ "\$EXITCODE" -ne 0 ]; then
+		printf "%s\n" "Failed to initiate signing request" 1>&2
+		exit "\$EXITCODE"
+	fi
+EOF
+
+
+
+
+
 # Ignore warning about unreachable statements, because this is triggered via trap
 # shellcheck disable=SC2317
 cleanupFd() {

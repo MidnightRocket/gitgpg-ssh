@@ -88,6 +88,16 @@ $ssh $SSH_ARGS -T "$SSH_SERVER" <<-EOF
 EOF
 
 
+cleanupSSH() {
+	kill "$PID_BACKGROUND_LISTENER" 2> /dev/null || stderr "Failed to kill backgroundListener no such process"
+	wait
+
+	$timeout 5s $ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2
+
+	cleanupTempDir
+}
+
+trap 'cleanupSSH' EXIT INT
 
 
 
@@ -101,11 +111,26 @@ backgroundSSHPipeStreaming() {
 }
 
 
+waitForSigningRequest() {
+	while [ -d "$TEMP_DIR" ]; do
+		REQUEST="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
+		if [ "$REQUEST" = "BEGIN SIGNING REQUEST" ]; then
+			printf "%i" "0" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_EXITCODE_PIPE"
+			return 0
+		else
+			stderr "Not a signing request"
+		fi
+	done
+}
+
 
 backgroundListener() {
 	ERROR_FILE="$TEMP_DIR/error"
 	while [ -d "$TEMP_DIR" ]; do
 		backgroundSSHPipeStreaming &
+
+		waitForSigningRequest
+
 
 		INPUT="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
 
@@ -130,16 +155,6 @@ PID_BACKGROUND_LISTENER="$!"
 
 
 
-cleanupSSH() {
-	kill "$PID_BACKGROUND_LISTENER"
-	wait
-
-	$timeout 5s $ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2
-
-	cleanupTempDir
-}
-
-trap 'cleanupSSH' EXIT INT
 
 
 
