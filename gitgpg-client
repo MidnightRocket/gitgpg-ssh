@@ -24,6 +24,8 @@ commandv() {
 }
 
 mkfifo="$(commandv mkfifo)"
+tr="$(commandv tr)"
+head="$(commandv head)"
 timeout="$(commandv timeout)"
 ssh="$(commandv ssh)"
 gpg="$(git config gpg.program)" || gpg="$(commandv gpg)"
@@ -111,14 +113,17 @@ backgroundSSHPipeStreaming() {
 }
 
 
+SIGNING_REQUEST_KEY="$($tr -dc A-Za-z0-9 </dev/urandom | $head -c 32)"
+
+
 waitForSigningRequest() {
 	while [ -d "$TEMP_DIR" ]; do
 		REQUEST="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
-		if [ "$REQUEST" = "BEGIN SIGNING REQUEST" ]; then
+		if [ "$REQUEST" = "BEGIN SIGNING REQUEST $SIGNING_REQUEST_KEY" ]; then
 			printf "%i" "0" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_EXITCODE_PIPE"
 			return 0
 		else
-			stderr "Not a signing request"
+			stderr "Not a valid signing request"
 		fi
 	done
 }
@@ -159,7 +164,7 @@ PID_BACKGROUND_LISTENER="$!"
 
 
 
-$ssh $SSH_ARGS -t "$SSH_SERVER" "GITGPG_REMOTE_DIR=$REMOTE_TEMP_DIR $SHELL -l"
+$ssh $SSH_ARGS -t "$SSH_SERVER" "GITGPG_REMOTE_DIR='$REMOTE_TEMP_DIR' GITGPG_SIGNING_REQUEST_KEY='$SIGNING_REQUEST_KEY' \$SHELL -l"
 
 
 

@@ -37,7 +37,7 @@ fi
 
 
 
-if [ -z "${GITGPG_REMOTE_DIR+x}" ]; then
+if [ -z "${GITGPG_REMOTE_DIR+x}" ] && [ -z "${GITGPG_SIGNING_REQUEST_KEY+x}" ]; then
 	stderr "Missing environment GITGPG_REMOTE_DIR"
 	stderr "Reverting to gpg"
 	exec "$gpg" "$@"
@@ -50,6 +50,10 @@ if [ ! -d "$GITGPG_REMOTE_DIR" ]; then
 fi
 
 
+if [ -z "${GITGPG_SIGNING_REQUEST_KEY+x}" ]; then
+	stderr "Missing environment GITGPG_SIGNING_REQUEST_KEY"
+	exit 1
+fi
 
 
 
@@ -72,7 +76,7 @@ checkForPipe "$EXITCODE_PIPE"
 
 
 $timeout 3s sh <<-EOF || reportError "$?" "Timeout: likely broken pipe.\nTry to restart session"
-	printf "%s" "BEGIN SIGNING REQUEST" > "$STDIN_PIPE"
+	printf "%s" "BEGIN SIGNING REQUEST $GITGPG_SIGNING_REQUEST_KEY" > "$STDIN_PIPE"
 	EXITCODE="\$(cat "$EXITCODE_PIPE")"
 	if [ "\$EXITCODE" -ne 0 ]; then
 		printf "%s\n" "Failed to initiate signing request" 1>&2
