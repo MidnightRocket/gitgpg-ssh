@@ -37,7 +37,7 @@ fi
 
 
 
-if [ -z "${GITGPG_SSH_DIR+x}" ] && [ -z "${GITGPG_SIGNING_REQUEST_KEY+x}" ]; then
+if [ -z "${GITGPG_SSH_DIR+x}" ]; then
 	stderr "Missing environment GITGPG_SSH_DIR"
 	stderr "Reverting to gpg"
 	exec "$gpg" "$@"
