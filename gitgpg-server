@@ -37,15 +37,15 @@ fi
 
 
 
-if [ -z "${GITGPG_REMOTE_DIR+x}" ] && [ -z "${GITGPG_SIGNING_REQUEST_KEY+x}" ]; then
-	stderr "Missing environment GITGPG_REMOTE_DIR"
+if [ -z "${GITGPG_SSH_DIR+x}" ] && [ -z "${GITGPG_SIGNING_REQUEST_KEY+x}" ]; then
+	stderr "Missing environment GITGPG_SSH_DIR"
 	stderr "Reverting to gpg"
 	exec "$gpg" "$@"
 fi
 
 
-if [ ! -d "$GITGPG_REMOTE_DIR" ]; then
-	stderr "No such directory '$GITGPG_REMOTE_DIR'"
+if [ ! -d "$GITGPG_SSH_DIR" ]; then
+	stderr "No such directory '$GITGPG_SSH_DIR'"
 	exit 1
 fi
 
@@ -64,10 +64,10 @@ checkForPipe() {
 	fi
 }
 
-STDIN_PIPE="$GITGPG_REMOTE_DIR/stdin.pipe"
-STDOUT_PIPE="$GITGPG_REMOTE_DIR/stdout.pipe"
-STDERR_PIPE="$GITGPG_REMOTE_DIR/stderr.pipe"
-EXITCODE_PIPE="$GITGPG_REMOTE_DIR/exitcode.pipe"
+STDIN_PIPE="$GITGPG_SSH_DIR/stdin.pipe"
+STDOUT_PIPE="$GITGPG_SSH_DIR/stdout.pipe"
+STDERR_PIPE="$GITGPG_SSH_DIR/stderr.pipe"
+EXITCODE_PIPE="$GITGPG_SSH_DIR/exitcode.pipe"
 checkForPipe "$STDIN_PIPE"
 checkForPipe "$STDOUT_PIPE"
 checkForPipe "$STDERR_PIPE"
