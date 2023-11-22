@@ -19,13 +19,22 @@ reportError() {
 	return "$1"
 }
 
+commandv() {
+	command -v "$1" || reportError "$?" "Executable '$1' not found"
+}
 
-gpg="$(git config --default "$(command -v gpg)" gpg.program)"
+mkfifo="$(commandv mkfifo)"
+timeout="$(commandv timeout)"
+ssh="$(commandv ssh)"
+gpg="$(git config gpg.program)" || gpg="$(commandv gpg)"
+
+
+
 KEY_ID="$(git config user.signingkey)" || reportError "$?" "Must configure gpg signing key using\n  git config --global user.signingkey \$KEYID"
 
 
 
-cleanup() {
+cleanupTempDir() {
 	# stderr "Doing cleanup rm '$TEMP_DIR'"
 	rm -rf "$TEMP_DIR"
 }
@@ -34,7 +43,7 @@ TEMP_SUFFIX="-gitgpg-remote"
 # have to force parent dir to /tmp otherwise is
 # Name for domain socket too long error is thrown by ssh
 TEMP_DIR="$(mktemp -d --suffix "$TEMP_SUFFIX" -p "/tmp")"
-trap 'cleanup' EXIT
+trap 'cleanupTempDir' EXIT INT
 
 
 
@@ -46,10 +55,10 @@ STDOUT_PIPE="$TEMP_DIR/stdout.pipe"
 STDERR_PIPE="$TEMP_DIR/stderr.pipe"
 # EXITCODE_PIPE="$TEMP_DIR/exitcode.pipe"
 
-# mkfifo "$STDIN_PIPE"
-mkfifo "$STDOUT_PIPE"
-mkfifo "$STDERR_PIPE"
-# mkfifo "$EXITCODE_PIPE"
+# $mkfifo "$STDIN_PIPE"
+$mkfifo "$STDOUT_PIPE"
+$mkfifo "$STDERR_PIPE"
+# $mkfifo "$EXITCODE_PIPE"
 
 
 
@@ -71,7 +80,7 @@ REMOTE_EXITCODE_PIPE="$REMOTE_TEMP_DIR/exitcode.pipe"
 
 
 
-ssh $SSH_ARGS -T "$SSH_SERVER" <<-EOF
+$ssh $SSH_ARGS -T "$SSH_SERVER" <<-EOF
 	mkfifo "$REMOTE_STDIN_PIPE"
 	mkfifo "$REMOTE_STDOUT_PIPE"
 	mkfifo "$REMOTE_STDERR_PIPE"
@@ -86,8 +95,8 @@ EOF
 
 
 backgroundSSHPipeStreaming() {
-	ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDOUT_PIPE" < $STDOUT_PIPE &
-	ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDERR_PIPE" < $STDERR_PIPE &
+	$ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDOUT_PIPE" < $STDOUT_PIPE &
+	$ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDERR_PIPE" < $STDERR_PIPE &
 	wait
 }
 
@@ -105,11 +114,11 @@ backgroundListener() {
 		INPUT="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
 		
 		EXITCODE="0" # Default exit code of zero
-		echo "$INPUT" | $gpg --status-fd=2 -bsau "$KEY_ID" 1>&8 2>&9 || EXITCODE="$?"
+		printf "%s" "$INPUT" | $gpg --status-fd=2 -bsau "$KEY_ID" 1>&8 2>&9 || EXITCODE="$?"
 
 		exec 8>&-
 		exec 9>&-
-		echo "$EXITCODE" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_EXITCODE_PIPE"
+		printf "%i" "$EXITCODE" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_EXITCODE_PIPE"
 		wait
 	done
 }
@@ -119,21 +128,24 @@ PID_BACKGROUND_LISTENER="$!"
 
 
 
+cleanupSSH() {
+	kill "$PID_BACKGROUND_LISTENER"
+	wait
+
+	$timeout 5s $ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2
+
+	cleanupTempDir
+}
+
+trap 'cleanupSSH' EXIT INT
 
 
 
 
+$ssh $SSH_ARGS -t "$SSH_SERVER" "GITGPG_REMOTE_DIR=$REMOTE_TEMP_DIR $SHELL -l"
 
-ssh $SSH_ARGS -t "$SSH_SERVER" "GITGPG_REMOTE_DIR=$REMOTE_TEMP_DIR $SHELL -l"
 
 
-# cleanup
-
-ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2
-
-kill "$PID_BACKGROUND_LISTENER"
-
-wait
 
 
 

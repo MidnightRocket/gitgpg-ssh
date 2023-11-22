@@ -6,7 +6,24 @@ stderr() {
 	printf "%b\n" "$@" 1>&2
 }
 
-gpg="$(command -v gpg)"
+reportError() {
+	stderr "$2"
+	return "$1"
+}
+
+commandv() {
+	command -v "$1" || reportError "$?" "Executable '$1' not found"
+}
+
+
+# Check dependencies
+gpg="$(commandv gpg)"
+mkfifo="$(commandv mkfifo)"
+timeout="$(commandv timeout)"
+
+
+
+
 
 
 ARGS="$@"
@@ -39,7 +56,7 @@ fi
 
 checkForPipe() {
 	if [ ! -p "$1" ]; then
-		mkfifo "$1"
+		$mkfifo "$1"
 	fi
 }
 
@@ -51,6 +68,24 @@ checkForPipe "$STDIN_PIPE"
 checkForPipe "$STDOUT_PIPE"
 checkForPipe "$STDERR_PIPE"
 checkForPipe "$EXITCODE_PIPE"
+
+
+
+
+cleanupFd() {
+	stderr "cleanup fd"
+	exec 8<&-
+	exec 9<&-
+
+	exec 5<&-
+	exec 6<&-
+	kill "$PID_STDOUT_STEAMER" 2> /dev/null || true # Allow fail
+	kill "$PID_STDERR_STEAMER" 2> /dev/null || true # Allow fail
+}
+
+trap 'cleanupFd' EXIT INT
+
+
 
 # stderr "Setting up pipes descriptors"
 
@@ -64,16 +99,20 @@ exec 6>&2
 
 # Stream content from pipe files into stdout and stderr
 cat <&8 >&5 &
+PID_STDOUT_STEAMER="$!"
 cat <&9 >&6 &
-
-cat > $STDIN_PIPE
-
-exec 8<&-
-exec 9<&-
+PID_STDERR_STEAMER="$!"
 
 
-exec 5<&-
-exec 6<&-
+INPUT="$(cat)"
+printf "%s" "$INPUT" > $STDIN_PIPE
+
+
+
+
+
+
+
 
 wait
 # stderr "waiting for exit code"
