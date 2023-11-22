@@ -26,7 +26,7 @@ KEY_ID="$(git config user.signingkey)" || reportError "$?" "Must configure gpg s
 
 
 cleanup() {
-	stderr "Doing cleanup rm '$TEMP_DIR'"
+	# stderr "Doing cleanup rm '$TEMP_DIR'"
 	rm -rf "$TEMP_DIR"
 }
 TEMP_SUFFIX="-gitgpg-remote"
@@ -38,20 +38,19 @@ trap 'cleanup' EXIT
 
 
 
-stderr "Local tempdir: $TEMP_DIR"
+# stderr "Local tempdir: $TEMP_DIR"
 
 
 # STDIN_PIPE="$TEMP_DIR/stdin.pipe"
-# STDOUT_PIPE="$TEMP_DIR/stdout.pipe"
-# STDERR_PIPE="$TEMP_DIR/stderr.pipe"
+STDOUT_PIPE="$TEMP_DIR/stdout.pipe"
+STDERR_PIPE="$TEMP_DIR/stderr.pipe"
 # EXITCODE_PIPE="$TEMP_DIR/exitcode.pipe"
-# 
+
 # mkfifo "$STDIN_PIPE"
-# mkfifo "$STDOUT_PIPE"
-# mkfifo "$STDERR_PIPE"
+mkfifo "$STDOUT_PIPE"
+mkfifo "$STDERR_PIPE"
 # mkfifo "$EXITCODE_PIPE"
 
-ls -l "$TEMP_DIR"
 
 
 SSH_ARGS=(-o "ControlMaster=auto" -o "ControlPath=$TEMP_DIR/S.control" -o "ControlPersist=15m")
@@ -62,7 +61,7 @@ SSH_SERVER="${1:?At least one argument required}"
 
 
 REMOTE_TEMP_DIR="$(ssh $SSH_ARGS -T "$SSH_SERVER" "mktemp --suffix '$TEMP_SUFFIX' -d")"
-stderr "Remote tempdir: $REMOTE_TEMP_DIR"
+# stderr "Remote tempdir: $REMOTE_TEMP_DIR"
 
 
 REMOTE_STDIN_PIPE="$REMOTE_TEMP_DIR/stdin.pipe"
@@ -82,23 +81,41 @@ EOF
 
 
 
+
+
+
+
+backgroundSSHPipeStreaming() {
+	ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDOUT_PIPE" < $STDOUT_PIPE &
+	ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDERR_PIPE" < $STDERR_PIPE &
+	wait
+}
+
+
+
 backgroundListener() {
 	ERROR_FILE="$TEMP_DIR/error"
 	while [ -d "$TEMP_DIR" ]; do
+		backgroundSSHPipeStreaming &
+
+		# Set up FDs so gpg program can stream to them
+		exec 8>$STDOUT_PIPE
+		exec 9>$STDERR_PIPE
+
 		INPUT="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
 		
 		EXITCODE="0" # Default exit code of zero
-		OUTPUT="$(echo "$INPUT" | $gpg --status-fd=2 -bsau "$KEY_ID" 2>$ERROR_FILE)" || EXITCODE="$?"
+		echo "$INPUT" | $gpg --status-fd=2 -bsau "$KEY_ID" 1>&8 2>&9 || EXITCODE="$?"
 
-		cat "$ERROR_FILE" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDERR_PIPE"
-		echo "$OUTPUT" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_STDOUT_PIPE"
+		exec 8>&-
+		exec 9>&-
 		echo "$EXITCODE" | ssh $SSH_ARGS -T "$SSH_SERVER" "cat > $REMOTE_EXITCODE_PIPE"
+		wait
 	done
 }
 
 backgroundListener &
 PID_BACKGROUND_LISTENER="$!"
-stderr "PID: $PID_BACKGROUND_LISTENER"
 
 
 
@@ -116,7 +133,7 @@ ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup 
 
 kill "$PID_BACKGROUND_LISTENER"
 
-stderr "end"
+wait
 
 
 

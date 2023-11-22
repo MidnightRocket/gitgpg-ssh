@@ -52,15 +52,31 @@ checkForPipe "$STDOUT_PIPE"
 checkForPipe "$STDERR_PIPE"
 checkForPipe "$EXITCODE_PIPE"
 
+# stderr "Setting up pipes descriptors"
+
+exec 8<$STDOUT_PIPE
+exec 9<$STDERR_PIPE
+
+# Create FDs for current stdout and stderr
+# so they can be used by background processes
+exec 5>&1
+exec 6>&2
+
+# Stream content from pipe files into stdout and stderr
+cat <&8 >&5 &
+cat <&9 >&6 &
+
+cat > $STDIN_PIPE
+
+exec 8<&-
+exec 9<&-
 
 
+exec 5<&-
+exec 6<&-
 
-cat > "$STDIN_PIPE"
-stderr "waiting for stderr"
-cat "$STDERR_PIPE" >&2
-stderr "waiting for response"
-cat "$STDOUT_PIPE"
-stderr "waiting for exit code"
+wait
+# stderr "waiting for exit code"
 EXITCODE="$(cat "$EXITCODE_PIPE")"
 
 exit "$EXITCODE"
