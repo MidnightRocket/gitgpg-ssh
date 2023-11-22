@@ -107,11 +107,13 @@ backgroundListener() {
 	while [ -d "$TEMP_DIR" ]; do
 		backgroundSSHPipeStreaming &
 
+		INPUT="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
+
+
 		# Set up FDs so gpg program can stream to them
 		exec 8>$STDOUT_PIPE
 		exec 9>$STDERR_PIPE
 
-		INPUT="$(ssh $SSH_ARGS -T "$SSH_SERVER" "cat $REMOTE_STDIN_PIPE")"
 		
 		EXITCODE="0" # Default exit code of zero
 		printf "%s" "$INPUT" | $gpg --status-fd=2 -bsau "$KEY_ID" 1>&8 2>&9 || EXITCODE="$?"

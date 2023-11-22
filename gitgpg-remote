@@ -26,7 +26,7 @@ timeout="$(commandv timeout)"
 
 
 
-ARGS="$@"
+ARGS="$*"
 
 # https://stackoverflow.com/a/8811800
 # If ARGS does not contain '-bsau' then not signing request
@@ -71,9 +71,9 @@ checkForPipe "$EXITCODE_PIPE"
 
 
 
-
+# Ignore warning about unreachable statements, because this is triggered via trap
+# shellcheck disable=SC2317
 cleanupFd() {
-	stderr "cleanup fd"
 	exec 8<&-
 	exec 9<&-
 
@@ -87,10 +87,14 @@ trap 'cleanupFd' EXIT INT
 
 
 
+INPUT="$(cat)"
+printf "%s" "$INPUT" > "$STDIN_PIPE"
+
+
 # stderr "Setting up pipes descriptors"
 
-exec 8<$STDOUT_PIPE
-exec 9<$STDERR_PIPE
+exec 8<"$STDOUT_PIPE"
+exec 9<"$STDERR_PIPE"
 
 # Create FDs for current stdout and stderr
 # so they can be used by background processes
@@ -104,8 +108,6 @@ cat <&9 >&6 &
 PID_STDERR_STEAMER="$!"
 
 
-INPUT="$(cat)"
-printf "%s" "$INPUT" > $STDIN_PIPE
 
 
 
