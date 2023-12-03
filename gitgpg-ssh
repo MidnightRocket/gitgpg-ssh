@@ -94,7 +94,7 @@ cleanupSSH() {
 	kill "$PID_BACKGROUND_LISTENER" 2> /dev/null || stderr "Failed to kill backgroundListener no such process"
 	wait
 
-	$timeout 5s $ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2
+	$timeout 5s $ssh $SSH_ARGS -T "$SSH_SERVER" "rm -rf '$REMOTE_TEMP_DIR' && echo 'Done cleanup on remote'" 1>&2 | true # allow failure
 
 	cleanupTempDir
 }
