@@ -39,13 +39,14 @@ KEY_ID="$(git config user.signingkey)" || reportError "$?" "Must configure gpg s
 cleanupTempDir() {
 	# stderr "Doing cleanup rm '$TEMP_DIR'"
 	rm -rf "$TEMP_DIR"
+	trap - EXIT
 }
 TEMP_SUFFIX="-gitgpg-remote"
 
 # have to force parent dir to /tmp otherwise is
 # Name for domain socket too long error is thrown by ssh
-TEMP_DIR="$(mktemp -d --suffix "$TEMP_SUFFIX" -p "/tmp")"
-trap 'cleanupTempDir' EXIT INT
+readonly TEMP_DIR="$(mktemp -d --suffix "$TEMP_SUFFIX" -p "/tmp")"
+trap 'cleanupTempDir' EXIT INT TERM HUP
 
 
 
@@ -99,8 +100,7 @@ cleanupSSH() {
 	cleanupTempDir
 }
 
-trap 'cleanupSSH' EXIT INT
-
+trap 'cleanupSSH' EXIT INT TERM HUP
 
 
 
