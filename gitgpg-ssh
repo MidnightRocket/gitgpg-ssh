@@ -3,25 +3,17 @@
 # https://serverfault.com/questions/960619/using-named-pipes-to-control-a-remote-ssh-session-in-bash
 # https://stackoverflow.com/a/20018118
 
-
-
-
-
+#!/bin/sh
 set -eu
-stderr() {
-	printf "%b\n" "$@" 1>&2
-}
+SCRIPT_DIR="$(realpath "$(dirname -- "$0")")"; readonly SCRIPT_DIR;
+print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
+stderr() { print "$@" 1>&2; }
+reportError() { stderr "$2"; return "$1"; }
+
+commandv() { command -v "$1" || reportError "$?" "Executable '$1' not found"; }
 
 
 
-reportError() {
-	stderr "$2"
-	return "$1"
-}
-
-commandv() {
-	command -v "$1" || reportError "$?" "Executable '$1' not found"
-}
 
 mkfifo="$(commandv mkfifo)"
 tr="$(commandv tr)"
@@ -65,7 +57,7 @@ $mkfifo "$STDERR_PIPE"
 
 
 
-SSH_ARGS=(-o "ControlMaster=auto" -o "ControlPath=$TEMP_DIR/S.control" -o "ControlPersist=15m")
+SSH_ARGS=(-o "ControlMaster=auto" -o "ControlPath=$TEMP_DIR/S.control" -o "ControlPersist=15m" -A)
 SSH_SERVER="${1:?At least one argument required}"
 
 
